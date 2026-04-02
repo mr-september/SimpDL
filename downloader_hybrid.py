@@ -248,13 +248,25 @@ def build_download_frame(parent, config_path, urls_file):
                                 source_url = None
                                 
                                 if not low_res:
-                                    # Source Quality Path: Resolve parent link
-                                    parent_a = img.find_parent('a')
-                                    if parent_a:
-                                        href = parent_a.get('href')
-                                        if href:
-                                            log_message(f"  [{idx+1}/{len(images)}] Resolving: {href[:50]}...")
-                                            source_url = resolve_source_image_headless(href, context, session)
+                                    # Speculative Path: Try suffix stripping the thumbnail URL first
+                                    thumb_src = img.get('data-url') or img.get('data-src') or img.get('src')
+                                    if thumb_src:
+                                        if thumb_src.startswith('//'): thumb_src = 'https:' + thumb_src
+                                        elif thumb_src.startswith('/'): thumb_src = 'https://simpcity.cr' + thumb_src
+                                        
+                                        if any(host in thumb_src for host in ['selti-delivery.ru', 'imgbox.com', 'pixl.is']):
+                                            speculative_source = verify_full_quality(thumb_src, session)
+                                            if speculative_source != thumb_src:
+                                                source_url = speculative_source
+                                    
+                                    # Traditional Path: Resolve parent link if speculative failed
+                                    if not source_url:
+                                        parent_a = img.find_parent('a')
+                                        if parent_a:
+                                            href = parent_a.get('href')
+                                            if href:
+                                                log_message(f"  [{idx+1}/{len(images)}] Resolving: {href[:50]}...")
+                                                source_url = resolve_source_image_headless(href, context, session)
                                 
                                 # Low-Res Path or Fallback
                                 if not source_url:

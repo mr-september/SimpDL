@@ -32,16 +32,23 @@ def get_folder_name(url):
     return "default_folder"
 
 def verify_full_quality(url, session):
-    """Attempt to find the full-res version of a medium-res link."""
-    # Common Chevereto pattern: filename.md.jpg (medium) -> filename.jpg (full)
-    if '.md.' in url:
-        full_url = url.replace('.md.', '.')
-        try:
-            r = session.head(full_url, timeout=5)
-            if r.status_code == 200:
-                return full_url
-        except:
-            pass
+    """Attempt to find the full-res version of a medium-res/thumb link."""
+    # Common Chevereto patterns:
+    # filename.md.jpg (medium) -> filename.jpg (full)
+    # filename.th.jpg (thumb) -> filename.jpg (full)
+    patterns = ['.md.', '.th.']
+    
+    current_url = url
+    for p in patterns:
+        if p in current_url:
+            full_url = current_url.replace(p, '.')
+            try:
+                # Use a proper User-Agent for the head check
+                r = session.head(full_url, timeout=5, allow_redirects=True)
+                if r.status_code == 200 and 'image' in r.headers.get('Content-Type', '').lower():
+                    return full_url
+            except:
+                pass
     return url
 
 def resolve_source_image_headless(url, context, session, log_callback=None):
