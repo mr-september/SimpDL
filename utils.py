@@ -71,22 +71,24 @@ def resolve_source_image_headless(url, context, session, log_callback=None):
             "Referer": "https://simpcity.cr/"
         })
         
-        # Don't block too many resources, just the obvious ads/trackers
-        page.route("**/*.{css,woff,woff2}", lambda route: route.abort())
+        # Don't block too many resources, but block ads
+        page.route("**/*.{woff,woff2,css}", lambda route: route.abort())
         
-        # Navigate and wait for actual content
-        page.goto(url, wait_until='load', timeout=20000)
+        # Navigate
+        page.goto(url, wait_until='load', timeout=30000)
         
-        # Stealth: move mouse slightly to trigger any "human" checks
+        # Stealth: move mouse slightly
         page.mouse.move(100, 100)
-        time.sleep(1)
+        time.sleep(2)
         
         # High-res selectors
         selectors = [
-            'img.main-image',
+            'img#image-viewer-image',
+            'img.viewer-main-image',
             'img#img',
             'img#image',
-            '.image-viewer-main-image',
+            'img.main-image',
+            '.image-viewer-main-image img',
             '#image-viewer-container img',
             'a[href*="/images/"] img'
         ]
@@ -94,16 +96,30 @@ def resolve_source_image_headless(url, context, session, log_callback=None):
         source_url = None
         for selector in selectors:
             try:
-                # Wait for the image to be injected and HAVE a source that isn't a loading gif
-                page.wait_for_selector(selector, timeout=8000)
+                # Wait for element to exist
+                page.wait_for_selector(selector, timeout=10000)
                 element = page.query_selector(selector)
-                if element:
-                    src = element.get_attribute('src')
-                    if src and 'loading.svg' not in src and not src.startswith('data:'):
-                        # Some sites use data-src for lazy loading the full res
-                        data_src = element.get_attribute('data-src') or element.get_attribute('data-main-image')
-                        source_url = data_src or src
-                        break
+                if not element:
+                    continue
+                
+                # Wait for the source to settle (transition from loading gif to actual image)
+                # Max 5 tries (5 seconds)
+                for _ in range(5):
+                    src = element.get_attribute('src') or ''
+                    data_src = element.get_attribute('data-src') or element.get_attribute('data-main-image') or ''
+                    
+                    candidate = data_src or src
+                    
+                    # If candidate exists and is not a placeholder/loader
+                    if candidate and not any(x in candidate.lower() for x in ['loading.svg', 'loader.gif', 'spacer.gif', 'data:']):
+                        if candidate.startswith('http'):
+                            source_url = candidate
+                            break
+                    
+                    time.sleep(1)
+                
+                if source_url:
+                    break
             except:
                 continue
         
